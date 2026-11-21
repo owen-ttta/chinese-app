@@ -53,8 +53,25 @@ const escapeHtml = (value = "") =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 
-const buildGoogleDocsContent = (items) => {
+const DEFAULT_FONT_SETTINGS = {
+  scale: 100,      // % ขนาดรวม
+  hanzi: 28,       // px ตัวอักษรจีนคำศัพท์
+  pinyin: 18,      // px พินอิน
+  thai: 18,        // px คำแปลไทยของคำศัพท์
+  topNote: 16,     // px รากศัพท์ / โน้ตด้านบน
+  sentence: 18,    // px ประโยคเต็มและคำแปล
+};
+
+const buildGoogleDocsContent = (items, fontSettings = DEFAULT_FONT_SETTINGS) => {
   const WORDS_PER_ROW = 8;
+  const scale = (fontSettings.scale || 100) / 100;
+  const hanziPt = ((fontSettings.hanzi || 28) * scale * 0.6).toFixed(1);
+  const pinyinPt = ((fontSettings.pinyin || 18) * scale * 0.6).toFixed(1);
+  const thaiPt = ((fontSettings.thai || 18) * scale * 0.6).toFixed(1);
+  const topNotePt = ((fontSettings.topNote || 16) * scale * 0.6).toFixed(1);
+  const sentencePt = ((fontSettings.sentence || 18) * scale * 0.6).toFixed(1);
+  const indexPt = Math.max(14, Number(sentencePt) + 2).toFixed(1);
+
   const noWrap = (value = "") =>
     escapeHtml(value).replaceAll(" ", "&nbsp;");
   const chunkBlocks = (blocks) => {
@@ -69,31 +86,32 @@ const buildGoogleDocsContent = (items) => {
     const tables = chunkBlocks(item.blocks).map((chunk) => {
       const cells = (renderer, extraStyle = "") =>
         chunk.map((block) =>
-          `<td nowrap="nowrap" style="min-width:64px;text-align:center;white-space:nowrap;padding:2px 5px;border:0;vertical-align:middle;${extraStyle}">${renderer(block)}</td>`
+          `<td nowrap="nowrap" style="min-width:56px;text-align:center;white-space:nowrap;padding:2px 4px;border:0;vertical-align:middle;${extraStyle}">${renderer(block)}</td>`
         ).join("");
       const hasTopNote = chunk.some((block) => block.topNote);
       const hasTopArrow = chunk.some((block) => block.showTopArrow);
-      return `<table cellpadding="0" cellspacing="0" border="0" style="border:0;border-collapse:collapse;table-layout:auto;margin:8px 0 12px 0;">
+      return `<table cellpadding="0" cellspacing="0" border="0" style="border:0;border-collapse:collapse;table-layout:auto;margin:6px 0 10px 0;">
         <tbody>
-          ${hasTopNote ? `<tr>${cells((block) => `<span style="font-size:9pt;font-weight:600;white-space:nowrap;">${noWrap(block.topNote)}</span>`, "height:26px;")}</tr>` : ""}
-          ${hasTopArrow ? `<tr>${cells((block) => block.showTopArrow ? '<span style="font-size:9pt;color:#000000;">↑</span>' : "", "height:14px;padding-top:0;padding-bottom:0;")}</tr>` : ""}
-          <tr>${cells((block) => `<span style="font-size:9pt;font-weight:600;white-space:nowrap;">${noWrap(block.thai || "0")}</span>`, "height:26px;")}</tr>
-          <tr>${cells((block) => block.thai ? '<span style="font-size:9pt;color:#000000;">↑</span>' : "", "height:14px;padding-top:0;padding-bottom:0;")}</tr>
-          <tr>${cells((block) => `<strong style="font-size:14pt;white-space:nowrap;">${noWrap(block.hanzi)}</strong>`, "height:28px;")}</tr>
-          <tr>${cells((block) => block.pinyin ? '<span style="font-size:8pt;color:#000000;">↑</span>' : "", "height:14px;padding-top:0;padding-bottom:0;")}</tr>
-          <tr>${cells((block) => `<span style="font-size:8.5pt;color:#000000;white-space:nowrap;">${noWrap(block.pinyin)}</span>`, "height:25px;")}</tr>
+          ${hasTopNote ? `<tr>${cells((block) => `<span style="font-size:${topNotePt}pt;font-weight:600;white-space:nowrap;color:#000000;">${noWrap(block.topNote)}</span>`, "height:24px;")}</tr>` : ""}
+          ${hasTopArrow ? `<tr>${cells((block) => block.showTopArrow ? `<span style="font-size:${topNotePt}pt;color:#000000;">↑</span>` : "", "height:14px;padding-top:0;padding-bottom:0;")}</tr>` : ""}
+          <tr>${cells((block) => `<span style="font-size:${thaiPt}pt;font-weight:600;white-space:nowrap;color:#000000;">${noWrap(block.thai || "0")}</span>`, "height:24px;")}</tr>
+          <tr>${cells((block) => block.thai ? `<span style="font-size:${thaiPt}pt;color:#000000;">↑</span>` : "", "height:14px;padding-top:0;padding-bottom:0;")}</tr>
+          <tr>${cells((block) => `<strong style="font-size:${hanziPt}pt;white-space:nowrap;color:#000000;">${noWrap(block.hanzi)}</strong>`, "height:28px;")}</tr>
+          <tr>${cells((block) => block.pinyin ? `<span style="font-size:${pinyinPt}pt;color:#000000;">↑</span>` : "", "height:14px;padding-top:0;padding-bottom:0;")}</tr>
+          <tr>${cells((block) => `<span style="font-size:${pinyinPt}pt;color:#000000;white-space:nowrap;">${noWrap(block.pinyin)}</span>`, "height:24px;")}</tr>
         </tbody>
       </table>`;
     }).join("");
 
-    return `<div style="margin:0 0 30px 0;font-family:Arial,'Noto Sans Thai','Noto Sans SC',sans-serif;page-break-inside:avoid;color:#000000;">
-      <p style="font-size:15pt;font-weight:700;margin:0 0 8px 0;">${escapeHtml(item.sentence.index)}</p>
+    return `<div style="margin:0 0 28px 0;font-family:Sarabun,Arial,'Noto Sans Thai','Noto Sans SC',sans-serif;page-break-inside:avoid;color:#000000;">
+      <p style="font-size:${indexPt}pt;font-weight:700;margin:0 0 6px 0;color:#000000;">${escapeHtml(item.sentence.index)}</p>
       ${tables}
-      ${item.sentence.hanzi ? `<p style="font-size:15pt;font-weight:700;margin:3px 0;">${escapeHtml(item.sentence.hanzi)}</p>` : ""}
-      ${item.sentence.pinyin ? `<p style="font-size:12pt;margin:3px 0;color:#000000;">${escapeHtml(item.sentence.pinyin)}</p>` : ""}
-      ${item.sentence.english ? `<p style="font-size:12pt;margin:3px 0;">${escapeHtml(item.sentence.english)}</p>` : ""}
-      ${item.sentence.thai ? `<p style="font-size:12pt;font-weight:600;margin:8px 0 3px 0;">${escapeHtml(item.sentence.thai)}</p>` : ""}
+      ${item.sentence.hanzi ? `<p style="font-size:${sentencePt}pt;font-weight:700;margin:3px 0;color:#000000;">${escapeHtml(item.sentence.hanzi)}</p>` : ""}
+      ${item.sentence.pinyin ? `<p style="font-size:${sentencePt}pt;margin:3px 0;color:#000000;">${escapeHtml(item.sentence.pinyin)}</p>` : ""}
+      ${item.sentence.english ? `<p style="font-size:${sentencePt}pt;margin:3px 0;color:#000000;">${escapeHtml(item.sentence.english)}</p>` : ""}
+      ${item.sentence.thai ? `<p style="font-size:${sentencePt}pt;font-weight:600;margin:6px 0 3px 0;color:#000000;">${escapeHtml(item.sentence.thai)}</p>` : ""}
     </div>`;
+  }).join("");
   }).join("");
 
   const html = `<div>${htmlItems}</div>`;
@@ -186,6 +204,11 @@ export default function SentenceBreakdown() {
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
 
+  // --- Font Settings & A4 Preview State ---
+  const [fontSettings, setFontSettings] = useState(DEFAULT_FONT_SETTINGS);
+  const [showFontPanel, setShowFontPanel] = useState(false);
+  const [previewZoom, setPreviewZoom] = useState(100);
+
   const previewRef = useRef(null);
   const importRef = useRef(null);
   const audioRef = useRef(null);
@@ -196,6 +219,12 @@ export default function SentenceBreakdown() {
       if (saved) setItems(normalizeItems(JSON.parse(saved)));
       const savedKey = localStorage.getItem("chinese_gemini_api_key");
       if (savedKey) setGeminiApiKey(savedKey);
+      const savedFonts = localStorage.getItem("chinese_font_settings");
+      if (savedFonts) {
+        try {
+          setFontSettings((prev) => ({ ...prev, ...JSON.parse(savedFonts) }));
+        } catch {}
+      }
     } catch (error) {
       console.error("Failed to restore sentence breakdown", error);
       setNotice("ไม่สามารถกู้คืนงานที่บันทึกไว้ได้");
@@ -203,6 +232,24 @@ export default function SentenceBreakdown() {
       setIsHydrated(true);
     }
   }, []);
+
+  const updateFontSetting = (key, value) => {
+    setFontSettings((prev) => {
+      const next = { ...prev, [key]: Number(value) };
+      try {
+        localStorage.setItem("chinese_font_settings", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const resetFontSettings = () => {
+    setFontSettings(DEFAULT_FONT_SETTINGS);
+    try {
+      localStorage.removeItem("chinese_font_settings");
+    } catch {}
+    setNotice("รีเซ็ตขนาดฟอนต์เป็นค่ามาตรฐานแล้ว");
+  };
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -527,8 +574,15 @@ export default function SentenceBreakdown() {
     try {
       const canvas = await html2canvas(previewRef.current, {
         backgroundColor: "#ffffff",
-        scale: Math.min(window.devicePixelRatio || 2, 2),
-        useCORS: true
+        scale: 2,
+        useCORS: true,
+        onclone: (clonedDoc) => {
+          const el = clonedDoc.querySelector("[data-preview-paper]");
+          if (el && el.parentElement) {
+            el.parentElement.style.transform = "none";
+            el.parentElement.style.marginBottom = "0px";
+          }
+        }
       });
       const url = canvas.toDataURL("image/png");
       const a = document.createElement("a");
@@ -546,7 +600,7 @@ export default function SentenceBreakdown() {
   const copyToGoogleDocs = async () => {
     setExporting("gdocs");
     try {
-      const { html, text } = buildGoogleDocsContent(items);
+      const { html, text } = buildGoogleDocsContent(items, fontSettings);
       if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
         await navigator.clipboard.write([
           new ClipboardItem({
@@ -577,6 +631,14 @@ export default function SentenceBreakdown() {
     try {
       const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, BorderStyle, WidthType, AlignmentType, VerticalAlign, TableLayoutType } = await import("docx");
 
+      const scale = (fontSettings.scale || 100) / 100;
+      const hanziHalfPt = Math.round((fontSettings.hanzi || 28) * scale * 1.3);
+      const pinyinHalfPt = Math.round((fontSettings.pinyin || 18) * scale * 1.3);
+      const thaiHalfPt = Math.round((fontSettings.thai || 18) * scale * 1.3);
+      const topNoteHalfPt = Math.round((fontSettings.topNote || 16) * scale * 1.3);
+      const sentenceHalfPt = Math.round((fontSettings.sentence || 18) * scale * 1.3);
+      const indexHalfPt = Math.round(Math.max(26, sentenceHalfPt + 4));
+
       const noBorders = {
         top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
         bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
@@ -590,9 +652,9 @@ export default function SentenceBreakdown() {
         children.push(
           new Paragraph({
             children: [
-              new TextRun({ font: "Sarabun", text: item.sentence.index || "", bold: true, size: 32, color: "000000" }),
+              new TextRun({ font: "Sarabun", text: item.sentence.index || "", bold: true, size: indexHalfPt, color: "000000" }),
             ],
-            spacing: { before: 400, after: 100 },
+            spacing: { before: 300, after: 80 },
           })
         );
 
@@ -605,32 +667,32 @@ export default function SentenceBreakdown() {
             const hasTopArrow = chunk.some(b => b.showTopArrow);
 
             if (hasTopNote) {
-              rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.topNote || "", size: 24, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
+              rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.topNote || "", size: topNoteHalfPt, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
             }
             if (hasTopArrow) {
-              rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.showTopArrow ? "↑" : "", size: 24, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
+              rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.showTopArrow ? "↑" : "", size: topNoteHalfPt, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
             }
-            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.thai || "", size: 24, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
-            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.thai ? "↑" : "", size: 24, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.CENTER })) }));
-            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.hanzi || "", size: 36, bold: true, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.CENTER })) }));
-            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.pinyin ? "↑" : "", size: 24, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.TOP })) }));
-            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.pinyin || "", size: 24, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.TOP })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.thai || "", size: thaiHalfPt, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.thai ? "↑" : "", size: thaiHalfPt, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.CENTER })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.hanzi || "", size: hanziHalfPt, bold: true, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.CENTER })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.pinyin ? "↑" : "", size: pinyinHalfPt, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.TOP })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.pinyin || "", size: pinyinHalfPt, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.TOP })) }));
 
             const table = new Table({
               rows: rows,
               layout: TableLayoutType.FIXED,
               width: { size: 100, type: WidthType.PERCENTAGE },
-              margins: { top: 0, bottom: 0, left: 50, right: 50 }
+              margins: { top: 0, bottom: 0, left: 40, right: 40 }
             });
             children.push(table);
-            children.push(new Paragraph({ text: "", spacing: { after: 100 } }));
+            children.push(new Paragraph({ text: "", spacing: { after: 80 } }));
           }
         }
 
-        if (item.sentence.hanzi) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.hanzi, size: 28, color: "000000" })], spacing: { before: 200 } }));
-        if (item.sentence.pinyin) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.pinyin, size: 28, color: "000000" })] }));
-        if (item.sentence.english) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.english, size: 28, color: "000000" })] }));
-        if (item.sentence.thai) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.thai, size: 28, color: "000000" })], spacing: { before: 100 } }));
+        if (item.sentence.hanzi) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.hanzi, size: sentenceHalfPt, bold: true, color: "000000" })], spacing: { before: 160 } }));
+        if (item.sentence.pinyin) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.pinyin, size: sentenceHalfPt, color: "000000" })] }));
+        if (item.sentence.english) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.english, size: sentenceHalfPt, color: "000000" })] }));
+        if (item.sentence.thai) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.thai, size: sentenceHalfPt, color: "000000" })], spacing: { before: 80 } }));
         
         children.push(new Paragraph({ text: "" }));
       });
@@ -649,6 +711,16 @@ export default function SentenceBreakdown() {
       setExporting("");
     }
   };
+
+  const fontScale = (fontSettings.scale || 100) / 100;
+  const hanziPx = Math.round((fontSettings.hanzi || 28) * fontScale);
+  const pinyinPx = Math.round((fontSettings.pinyin || 18) * fontScale);
+  const thaiPx = Math.round((fontSettings.thai || 18) * fontScale);
+  const topNotePx = Math.round((fontSettings.topNote || 16) * fontScale);
+  const sentencePx = Math.round((fontSettings.sentence || 18) * fontScale);
+  const indexPx = Math.round(Math.max(20, sentencePx * 1.25));
+  const arrowPx = Math.round(Math.max(13, pinyinPx * 0.95));
+  const topArrowPx = Math.round(Math.max(13, topNotePx * 0.95));
 
   return (
     <main className="flex-1 min-h-screen bg-slate-100 py-8 px-4 md:px-8 font-sans">
@@ -860,65 +932,303 @@ export default function SentenceBreakdown() {
           </div>
         </div>
 
-        {/* Right Column: Preview (Sticky) */}
-        <div className="w-full lg:w-1/2 lg:sticky lg:top-8 flex flex-col gap-4">
-          <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <h2 className="text-lg font-bold text-slate-800">ตัวอย่าง (Preview)</h2>
+        {/* Right Column: Preview (Sticky, Strict A4 Size Only) */}
+        <div className="w-full lg:w-1/2 lg:sticky lg:top-8 flex flex-col gap-3">
+          
+          {/* Action Header */}
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-800">ตัวอย่าง (Preview)</h2>
+              <span className="px-2 py-0.5 text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md">
+                ขนาด A4 เท่านั้น
+              </span>
+            </div>
             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-              <button disabled={Boolean(exporting)} onClick={downloadImage} className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400 text-white px-4 py-2 rounded-xl font-semibold shadow-sm transition-colors text-sm cursor-pointer disabled:cursor-wait">
+              <button disabled={Boolean(exporting)} onClick={downloadImage} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400 text-white px-3.5 py-2 rounded-xl font-semibold shadow-xs transition-colors text-xs cursor-pointer disabled:cursor-wait">
                 <DownloadIcon /> {exporting === "image" ? "กำลังสร้าง…" : "รูปภาพ"}
               </button>
-              <button disabled={Boolean(exporting)} onClick={downloadDocx} className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded-xl font-semibold shadow-sm transition-colors text-sm cursor-pointer disabled:cursor-wait">
+              <button disabled={Boolean(exporting)} onClick={downloadDocx} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-3.5 py-2 rounded-xl font-semibold shadow-xs transition-colors text-xs cursor-pointer disabled:cursor-wait">
                 <DownloadIcon /> {exporting === "docx" ? "กำลังสร้าง…" : "Word"}
               </button>
-              <button disabled={Boolean(exporting)} onClick={copyToGoogleDocs} className="basis-full sm:basis-auto flex-1 sm:flex-none flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white px-4 py-2 rounded-xl font-semibold shadow-sm transition-colors text-sm cursor-pointer disabled:cursor-wait">
+              <button disabled={Boolean(exporting)} onClick={copyToGoogleDocs} className="basis-full sm:basis-auto flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white px-3.5 py-2 rounded-xl font-semibold shadow-xs transition-colors text-xs cursor-pointer disabled:cursor-wait">
                 <CopyIcon /> {exporting === "gdocs" ? "กำลังคัดลอก…" : "Google Docs"}
               </button>
             </div>
           </div>
-          
-          <div className="bg-slate-200/50 p-4 rounded-2xl border border-slate-200 overflow-x-auto shadow-inner h-auto max-h-[calc(100vh-140px)] overflow-y-auto">
-            <div 
-              ref={previewRef} 
-              className="bg-white rounded-lg shadow-sm mx-auto p-8 sm:p-12 w-full flex flex-col gap-16"
-              style={{ minHeight: '500px', color: '#000000', fontFamily: 'var(--font-sarabun), var(--font-noto-sans-sc), sans-serif' }}
-            >
-              {items.map((item) => (
-                <div key={item.id} className="flex gap-4 sm:gap-6">
-                  <div className="text-2xl font-bold pt-14 whitespace-nowrap min-w-[2rem] text-black">
-                    {item.sentence.index}
-                  </div>
-                  
-                  <div className="flex flex-col gap-8 flex-1">
-                    {/* Top Word Breakdown Section */}
-                    {item.blocks.length > 0 && (
-                      <div className="flex flex-wrap gap-x-6 gap-y-8">
-                        {item.blocks.map((block) => (
-                          <div key={block.id} className="flex flex-col items-center justify-end min-w-[3rem]">
-                            <div className="h-14 flex flex-col items-center justify-end mb-1 text-black">
-                              {block.topNote && <span className="text-lg font-medium text-black">{block.topNote}</span>}
-                              {block.showTopArrow && <span className="text-xl mt-1 text-black">↑</span>}
-                            </div>
-                            <div className="text-xl h-8 flex items-center font-medium text-black">{block.thai}</div>
-                            {block.thai && <div className="text-lg leading-none text-black" aria-hidden="true">↑</div>}
-                            <div className="text-3xl font-bold mt-1 mb-1 text-black">{block.hanzi}</div>
-                            {block.pinyin && <div className="text-lg text-black">↑</div>}
-                            <div className="text-xl font-medium text-black">{block.pinyin}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
 
-                    {/* Sentence Translation Section */}
-                    <div className="flex flex-col gap-1.5 mt-2 text-xl text-black leading-relaxed">
-                      {item.sentence.hanzi && <div className="font-semibold text-black">{item.sentence.hanzi}</div>}
-                      {item.sentence.pinyin && <div className="text-black">{item.sentence.pinyin}</div>}
-                      {item.sentence.english && <div className="text-black">{item.sentence.english}</div>}
-                      {item.sentence.thai && <div className="mt-3 font-medium text-black">{item.sentence.thai}</div>}
+          {/* Font Size & A4 Zoom Toolbar */}
+          <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-700">ขนาดฟอนต์:</span>
+                <button
+                  type="button"
+                  onClick={() => updateFontSetting("scale", Math.max(60, fontSettings.scale - 5))}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors"
+                  title="ลดขนาดตัวอักษร 5%"
+                >
+                  A-
+                </button>
+                <span className="text-xs font-bold text-indigo-700 px-1 min-w-[42px] text-center">
+                  {fontSettings.scale}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => updateFontSetting("scale", Math.min(160, fontSettings.scale + 5))}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors"
+                  title="เพิ่มขนาดตัวอักษร 5%"
+                >
+                  A+
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFontPanel(!showFontPanel)}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 ${
+                    showFontPanel
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
+                  }`}
+                >
+                  ⚙️ {showFontPanel ? "ปิดแถบปรับขนาด" : "ปรับขนาดละเอียด"}
+                </button>
+              </div>
+
+              {/* Viewport Zoom */}
+              <div className="flex items-center gap-1 text-xs">
+                <span className="text-slate-400 text-[11px]">ซูม A4:</span>
+                {[75, 85, 100].map((z) => (
+                  <button
+                    key={z}
+                    type="button"
+                    onClick={() => setPreviewZoom(z)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all ${
+                      previewZoom === z
+                        ? "bg-slate-800 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {z}%
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Expandable Detailed Font Settings Panel */}
+            {showFontPanel && (
+              <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs animate-in fade-in duration-150">
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between text-slate-600 font-medium">
+                    <span>ตัวอักษรจีนคำศัพท์ (Hanzi):</span>
+                    <b className="text-indigo-600">{fontSettings.hanzi}px</b>
+                  </div>
+                  <input
+                    type="range"
+                    min="18"
+                    max="48"
+                    value={fontSettings.hanzi}
+                    onChange={(e) => updateFontSetting("hanzi", e.target.value)}
+                    className="w-full accent-indigo-600 cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between text-slate-600 font-medium">
+                    <span>พินอินคำศัพท์ (Pinyin):</span>
+                    <b className="text-indigo-600">{fontSettings.pinyin}px</b>
+                  </div>
+                  <input
+                    type="range"
+                    min="12"
+                    max="28"
+                    value={fontSettings.pinyin}
+                    onChange={(e) => updateFontSetting("pinyin", e.target.value)}
+                    className="w-full accent-indigo-600 cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between text-slate-600 font-medium">
+                    <span>คำแปลไทยคำศัพท์ (Thai):</span>
+                    <b className="text-indigo-600">{fontSettings.thai}px</b>
+                  </div>
+                  <input
+                    type="range"
+                    min="12"
+                    max="28"
+                    value={fontSettings.thai}
+                    onChange={(e) => updateFontSetting("thai", e.target.value)}
+                    className="w-full accent-indigo-600 cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between text-slate-600 font-medium">
+                    <span>ความหมายรากศัพท์ (Note บน):</span>
+                    <b className="text-indigo-600">{fontSettings.topNote}px</b>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="26"
+                    value={fontSettings.topNote}
+                    onChange={(e) => updateFontSetting("topNote", e.target.value)}
+                    className="w-full accent-indigo-600 cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1 sm:col-span-2">
+                  <div className="flex justify-between text-slate-600 font-medium">
+                    <span>ประโยคเต็มและคำแปล (Sentence):</span>
+                    <b className="text-indigo-600">{fontSettings.sentence}px</b>
+                  </div>
+                  <input
+                    type="range"
+                    min="12"
+                    max="30"
+                    value={fontSettings.sentence}
+                    onChange={(e) => updateFontSetting("sentence", e.target.value)}
+                    className="w-full accent-indigo-600 cursor-pointer"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 flex items-center justify-between pt-1 border-t border-slate-100">
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setFontSettings({ ...fontSettings, scale: 85 })}
+                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-medium"
+                    >
+                      กะทัดรัด (85%)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFontSettings({ ...fontSettings, scale: 100 })}
+                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-medium"
+                    >
+                      มาตรฐาน (100%)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFontSettings({ ...fontSettings, scale: 115 })}
+                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-medium"
+                    >
+                      ตัวใหญ่ (115%)
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetFontSettings}
+                    className="text-xs text-red-600 hover:underline"
+                  >
+                    รีเซ็ตค่าเริ่มต้น
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Strictly A4 Document Canvas */}
+          <div className="bg-[#525659] p-4 sm:p-6 rounded-2xl border border-slate-300 overflow-x-auto shadow-inner flex flex-col items-center max-h-[calc(100vh-140px)] overflow-y-auto">
+            {/* A4 Sheet Dimensions Indicator */}
+            <div className="w-full max-w-[210mm] flex items-center justify-between text-slate-300 text-xs mb-3 px-1 select-none">
+              <span className="flex items-center gap-1.5 font-medium">
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                เอกสาร A4 (210 × 297 มม.) • สัดส่วนต้นฉบับ
+              </span>
+              <span className="text-[11px] text-slate-400">
+                ฟอนต์ {fontSettings.scale}% • มุมมอง {previewZoom}%
+              </span>
+            </div>
+
+            {/* A4 Paper Sheet strictly 210mm width */}
+            <div
+              style={{
+                transform: previewZoom !== 100 ? `scale(${previewZoom / 100})` : undefined,
+                transformOrigin: "top center",
+                marginBottom: previewZoom !== 100 ? `${(previewZoom / 100 - 1) * 350}px` : undefined,
+                width: "210mm",
+                minWidth: "210mm",
+                maxWidth: "210mm",
+              }}
+              className="transition-transform duration-150"
+            >
+              <div 
+                ref={previewRef} 
+                data-preview-paper="true"
+                className="bg-white shadow-2xl mx-auto flex flex-col gap-12 border border-slate-200"
+                style={{ 
+                  width: "210mm",
+                  minWidth: "210mm",
+                  maxWidth: "210mm",
+                  minHeight: "297mm",
+                  padding: "20mm 16mm",
+                  boxSizing: "border-box",
+                  color: "#000000", 
+                  fontFamily: "var(--font-sarabun), var(--font-noto-sans-sc), sans-serif" 
+                }}
+              >
+                {items.map((item) => (
+                  <div key={item.id} className="flex gap-4">
+                    <div 
+                      className="font-bold pt-8 whitespace-nowrap min-w-[2rem] text-black"
+                      style={{ fontSize: `${indexPx}px`, color: "#000000" }}
+                    >
+                      {item.sentence.index}
+                    </div>
+                    
+                    <div className="flex flex-col gap-6 flex-1">
+                      {/* Top Word Breakdown Section */}
+                      {item.blocks.length > 0 && (
+                        <div className="flex flex-wrap gap-x-5 gap-y-6">
+                          {item.blocks.map((block) => (
+                            <div key={block.id} className="flex flex-col items-center justify-end min-w-[2.8rem]">
+                              <div className="flex flex-col items-center justify-end mb-1 text-black" style={{ minHeight: `${Math.round(topNotePx * 2.2)}px` }}>
+                                {block.topNote && (
+                                  <span className="font-medium text-black leading-tight" style={{ fontSize: `${topNotePx}px`, color: "#000000" }}>
+                                    {block.topNote}
+                                  </span>
+                                )}
+                                {block.showTopArrow && (
+                                  <span className="mt-0.5 text-black leading-none" style={{ fontSize: `${topArrowPx}px`, color: "#000000" }}>
+                                    ↑
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center font-medium text-black leading-tight" style={{ fontSize: `${thaiPx}px`, minHeight: `${thaiPx + 6}px`, color: "#000000" }}>
+                                {block.thai}
+                              </div>
+                              {block.thai && (
+                                <div className="leading-none text-black my-0.5" style={{ fontSize: `${arrowPx}px`, color: "#000000" }} aria-hidden="true">
+                                  ↑
+                                </div>
+                              )}
+                              <div className="font-bold my-0.5 text-black leading-none" style={{ fontSize: `${hanziPx}px`, color: "#000000" }}>
+                                {block.hanzi}
+                              </div>
+                              {block.pinyin && (
+                                <div className="leading-none text-black my-0.5" style={{ fontSize: `${arrowPx}px`, color: "#000000" }}>
+                                  ↑
+                                </div>
+                              )}
+                              <div className="font-medium text-black leading-tight" style={{ fontSize: `${pinyinPx}px`, color: "#000000" }}>
+                                {block.pinyin}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Sentence Translation Section */}
+                      <div className="flex flex-col gap-1.5 mt-2 text-black leading-relaxed" style={{ fontSize: `${sentencePx}px`, color: "#000000" }}>
+                        {item.sentence.hanzi && <div className="font-semibold text-black" style={{ fontSize: `${Math.round(sentencePx * 1.05)}px`, color: "#000000" }}>{item.sentence.hanzi}</div>}
+                        {item.sentence.pinyin && <div className="text-black" style={{ color: "#000000" }}>{item.sentence.pinyin}</div>}
+                        {item.sentence.english && <div className="text-black" style={{ color: "#000000" }}>{item.sentence.english}</div>}
+                        {item.sentence.thai && <div className="mt-2 font-medium text-black" style={{ color: "#000000" }}>{item.sentence.thai}</div>}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
           

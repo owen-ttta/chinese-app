@@ -6,7 +6,7 @@ import pinyinDict from "@/data/pinyinDict.json";
 import wordThaiDict from "@/data/wordThaiDict.json";
 import { SYSTEM_PROMPT } from "@/data/aiPrompt";
 
-const MAX_SENTENCES = 50;
+const MAX_SENTENCES = 100;
 const MAX_SENTENCE_LENGTH = 500;
 const LEARNING_BOUNDARY_CHARS = new Set(
   Array.from("我你他她它爱好很是的地得有在不没吗呢吧啊呀嘛么了着过去来想要会能给把被和也都")
@@ -32,9 +32,9 @@ hsk300.forEach((item) => {
 });
 
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL_MS = 120; // Throttle Google Translate calls
+const MIN_REQUEST_INTERVAL_MS = 60; // Safe spacing between Google Translate calls
 
-const safeTranslate = async (text, to, includeRomanization = false, retries = 2) => {
+const safeTranslate = async (text, to, includeRomanization = false) => {
   if (!text || !text.trim()) return { translatedText: "", pinyin: "" };
 
   const cacheKey = `${text}:${to}:${includeRomanization}`;
@@ -42,7 +42,7 @@ const safeTranslate = async (text, to, includeRomanization = false, retries = 2)
     return translationCache.get(cacheKey);
   }
 
-  // Throttle requests to Google Translate
+  // Throttle requests
   const now = Date.now();
   const timeSinceLast = now - lastRequestTime;
   if (timeSinceLast < MIN_REQUEST_INTERVAL_MS) {
@@ -51,8 +51,9 @@ const safeTranslate = async (text, to, includeRomanization = false, retries = 2)
   lastRequestTime = Date.now();
 
   try {
+    // Primary: Google Translate with client=at (unblocked, returns both translation & pinyin)
     const params = new URLSearchParams({
-      client: "gtx",
+      client: "at",
       sl: "zh-CN",
       tl: to,
       dt: "t",
@@ -69,50 +70,56 @@ const safeTranslate = async (text, to, includeRomanization = false, retries = 2)
       }
     );
 
-    if (response.status === 429) {
-      console.warn(`Translation rate limit (429) for "${text}". Retrying...`);
-      if (retries > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        return safeTranslate(text, to, includeRomanization, retries - 1);
+    if (response.ok) {
+      const data = await response.json();
+      const segments = Array.isArray(data?.[0]) ? data[0] : [];
+      const translatedText = segments
+        .filter((s) => s && typeof s[0] === "string")
+        .map((s) => s[0])
+        .join("")
+        .trim();
+
+      let pinyin = "";
+      for (const seg of segments) {
+        if (seg && typeof seg[3] === "string" && seg[3].trim()) {
+          pinyin = seg[3].trim();
+          break;
+        }
       }
-      // Graceful fallback when rate limited
-      const fallbackText = wordThaiDict[text] || charDict[text] || text;
-      const fallbackPinyin = pinyinDict[text] || "";
-      const fallbackResult = { translatedText: fallbackText, pinyin: fallbackPinyin };
-      translationCache.set(cacheKey, fallbackResult);
-      return fallbackResult;
+
+      const result = {
+        translatedText: translatedText || wordThaiDict[text] || text,
+        pinyin: pinyin || pinyinDict[text] || ""
+      };
+      translationCache.set(cacheKey, result);
+      return result;
     }
 
-    if (!response.ok) {
-      const fallbackText = wordThaiDict[text] || charDict[text] || text;
-      const fallbackPinyin = pinyinDict[text] || "";
-      return { translatedText: fallbackText, pinyin: fallbackPinyin };
+    // Secondary fallback: clients5 endpoint
+    const fallbackUrl = `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=zh-CN&tl=${to}&q=${encodeURIComponent(text)}`;
+    const fbResponse = await fetch(fallbackUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)"
+      }
+    });
+
+    if (fbResponse.ok) {
+      const fbData = await fbResponse.json();
+      const translatedText = Array.isArray(fbData) ? fbData[0] : String(fbData || "");
+      const result = {
+        translatedText: translatedText || wordThaiDict[text] || text,
+        pinyin: pinyinDict[text] || ""
+      };
+      translationCache.set(cacheKey, result);
+      return result;
     }
 
-    const data = await response.json();
-    const segments = Array.isArray(data?.[0]) ? data[0] : [];
-    const translatedText = segments
-      .map((segment) => segment?.[0] || "")
-      .join("")
-      .trim();
-    const pinyin = segments
-      .map((segment) => segment?.[3] || "")
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    const result = {
-      translatedText: translatedText || wordThaiDict[text] || text,
-      pinyin: pinyin || pinyinDict[text] || ""
+    return {
+      translatedText: wordThaiDict[text] || charDict[text] || text,
+      pinyin: pinyinDict[text] || ""
     };
-    translationCache.set(cacheKey, result);
-    return result;
   } catch (err) {
     console.warn(`Translation error for "${text}":`, err.message);
-    if (retries > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      return safeTranslate(text, to, includeRomanization, retries - 1);
-    }
     return {
       translatedText: wordThaiDict[text] || charDict[text] || text,
       pinyin: pinyinDict[text] || ""
