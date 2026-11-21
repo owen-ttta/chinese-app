@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import hsk300 from "@/data/hsk300.json";
 import morphemeDict from "@/data/morphemeDict.json";
 import charDict from "@/data/charDict.json";
+import pinyinDict from "@/data/pinyinDict.json";
+import wordThaiDict from "@/data/wordThaiDict.json";
 import { SYSTEM_PROMPT } from "@/data/aiPrompt";
 
-const MAX_SENTENCES = 20;
+const MAX_SENTENCES = 50;
 const MAX_SENTENCE_LENGTH = 500;
 const LEARNING_BOUNDARY_CHARS = new Set(
   Array.from("我你他她它爱好很是的地得有在不没吗呢吧啊呀嘛么了着过去来想要会能给把被和也都")
@@ -17,6 +19,9 @@ const NO_DIRECT_MEANING_WORDS = new Set([
   "的", "地", "得", "了", "着", "过", "吗", "呢", "吧", "啊", "呀", "嘛", "么"
 ]);
 
+// In-memory translation cache (survives across requests in the Node process)
+const translationCache = new Map();
+
 // Map of clean Chinese text to HSK ground truth item
 const hskMap = new Map();
 hsk300.forEach((item) => {
@@ -25,6 +30,95 @@ hsk300.forEach((item) => {
     hskMap.set(cleanHanzi, item);
   }
 });
+
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL_MS = 120; // Throttle Google Translate calls
+
+const safeTranslate = async (text, to, includeRomanization = false, retries = 2) => {
+  if (!text || !text.trim()) return { translatedText: "", pinyin: "" };
+
+  const cacheKey = `${text}:${to}:${includeRomanization}`;
+  if (translationCache.has(cacheKey)) {
+    return translationCache.get(cacheKey);
+  }
+
+  // Throttle requests to Google Translate
+  const now = Date.now();
+  const timeSinceLast = now - lastRequestTime;
+  if (timeSinceLast < MIN_REQUEST_INTERVAL_MS) {
+    await new Promise((resolve) => setTimeout(resolve, MIN_REQUEST_INTERVAL_MS - timeSinceLast));
+  }
+  lastRequestTime = Date.now();
+
+  try {
+    const params = new URLSearchParams({
+      client: "gtx",
+      sl: "zh-CN",
+      tl: to,
+      dt: "t",
+      q: text
+    });
+    if (includeRomanization) params.append("dt", "rm");
+
+    const response = await fetch(
+      `https://translate.googleapis.com/translate_a/single?${params.toString()}`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)"
+        }
+      }
+    );
+
+    if (response.status === 429) {
+      console.warn(`Translation rate limit (429) for "${text}". Retrying...`);
+      if (retries > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return safeTranslate(text, to, includeRomanization, retries - 1);
+      }
+      // Graceful fallback when rate limited
+      const fallbackText = wordThaiDict[text] || charDict[text] || text;
+      const fallbackPinyin = pinyinDict[text] || "";
+      const fallbackResult = { translatedText: fallbackText, pinyin: fallbackPinyin };
+      translationCache.set(cacheKey, fallbackResult);
+      return fallbackResult;
+    }
+
+    if (!response.ok) {
+      const fallbackText = wordThaiDict[text] || charDict[text] || text;
+      const fallbackPinyin = pinyinDict[text] || "";
+      return { translatedText: fallbackText, pinyin: fallbackPinyin };
+    }
+
+    const data = await response.json();
+    const segments = Array.isArray(data?.[0]) ? data[0] : [];
+    const translatedText = segments
+      .map((segment) => segment?.[0] || "")
+      .join("")
+      .trim();
+    const pinyin = segments
+      .map((segment) => segment?.[3] || "")
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const result = {
+      translatedText: translatedText || wordThaiDict[text] || text,
+      pinyin: pinyin || pinyinDict[text] || ""
+    };
+    translationCache.set(cacheKey, result);
+    return result;
+  } catch (err) {
+    console.warn(`Translation error for "${text}":`, err.message);
+    if (retries > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return safeTranslate(text, to, includeRomanization, retries - 1);
+    }
+    return {
+      translatedText: wordThaiDict[text] || charDict[text] || text,
+      pinyin: pinyinDict[text] || ""
+    };
+  }
+};
 
 const mapWithConcurrency = async (values, limit, mapper) => {
   const results = new Array(values.length);
@@ -42,38 +136,6 @@ const mapWithConcurrency = async (values, limit, mapper) => {
     Array.from({ length: Math.min(limit, values.length) }, () => worker())
   );
   return results;
-};
-
-const translate = async (text, to, includeRomanization = false) => {
-  const params = new URLSearchParams({
-    client: "gtx",
-    sl: "zh-CN",
-    tl: to,
-    dt: "t",
-    q: text
-  });
-  if (includeRomanization) params.append("dt", "rm");
-
-  const response = await fetch(
-    `https://translate.googleapis.com/translate_a/single?${params.toString()}`,
-    { headers: { "User-Agent": "Mozilla/5.0" } }
-  );
-  if (!response.ok) throw new Error(`Translation service returned ${response.status}`);
-
-  const data = await response.json();
-  const segments = Array.isArray(data?.[0]) ? data[0] : [];
-  const translatedText = segments
-    .map((segment) => segment?.[0] || "")
-    .join("")
-    .trim();
-  const pinyin = segments
-    .map((segment) => segment?.[3] || "")
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!translatedText) throw new Error("Translation service returned no text");
-  return { translatedText, pinyin };
 };
 
 const segmentChinese = (sentence) => {
@@ -105,7 +167,7 @@ const segmentChinese = (sentence) => {
 };
 
 const analyzeSentenceSmart = async (sentence, index = 1) => {
-  // Check exact match in HSK 300 ground truth
+  // 1. Check exact match in HSK 300 ground truth first
   const cleanHanzi = sentence.replace(/[^\p{Script=Han}]/gu, "");
   if (hskMap.has(cleanHanzi)) {
     const matched = hskMap.get(cleanHanzi);
@@ -122,7 +184,7 @@ const analyzeSentenceSmart = async (sentence, index = 1) => {
   if (words.length === 0) throw new Error("No Chinese words found");
 
   const getCharacterBreakdown = async (word) => {
-    // 1. Check learned compound dictionary from 300 HSK sentences
+    // Check learned compound dictionary from 300 HSK sentences
     if (morphemeDict[word]) {
       return { topNote: morphemeDict[word], showTopArrow: true };
     }
@@ -132,9 +194,8 @@ const analyzeSentenceSmart = async (sentence, index = 1) => {
       return { topNote: "", showTopArrow: false };
     }
 
-    // 2. Check individual characters in charDict or suffix rules
+    // Check individual characters in charDict or suffix rules
     const meanings = [];
-    let allFound = true;
     for (const char of characters) {
       if (char === "子" || char === "儿") {
         meanings.push("0");
@@ -143,61 +204,40 @@ const analyzeSentenceSmart = async (sentence, index = 1) => {
       } else if (NO_DIRECT_MEANING_WORDS.has(char)) {
         meanings.push("0");
       } else {
-        allFound = false;
-        break;
+        const res = await safeTranslate(char, "th");
+        meanings.push(res.translatedText && res.translatedText !== char ? res.translatedText : "0");
       }
     }
-
-    if (allFound) {
-      return {
-        topNote: meanings.join(" + "),
-        showTopArrow: true
-      };
-    }
-
-    // 3. Fallback to translation service
-    const translatedMeanings = await mapWithConcurrency(
-      characters,
-      4,
-      async (character) => {
-        if (charDict[character]) return charDict[character];
-        if (NO_DIRECT_MEANING_WORDS.has(character) || character === "子") return "0";
-        try {
-          const result = await translate(character, "th");
-          return result.translatedText && result.translatedText !== character
-            ? result.translatedText
-            : "0";
-        } catch {
-          return "0";
-        }
-      }
-    );
 
     return {
-      topNote: translatedMeanings.join(" + "),
+      topNote: meanings.join(" + "),
       showTopArrow: true
     };
   };
 
   const [thaiSentence, englishSentence, wordDetails] = await Promise.all([
-    translate(sentence, "th", true),
-    translate(sentence, "en"),
+    safeTranslate(sentence, "th", true),
+    safeTranslate(sentence, "en"),
     mapWithConcurrency(
       words,
-      6,
+      4,
       async (word) => {
         const [result, characterBreakdown] = await Promise.all([
-          translate(word, "th", true),
+          (wordThaiDict[word] && pinyinDict[word])
+            ? Promise.resolve({ translatedText: wordThaiDict[word], pinyin: pinyinDict[word] })
+            : safeTranslate(word, "th", true),
           getCharacterBreakdown(word)
         ]);
+
         const hasDirectMeaning =
           !NO_DIRECT_MEANING_WORDS.has(word) &&
           result.translatedText &&
           result.translatedText !== word;
+
         return {
           hanzi: word,
-          pinyin: result.pinyin,
-          thai: hasDirectMeaning ? result.translatedText : "0",
+          pinyin: result.pinyin || pinyinDict[word] || "",
+          thai: hasDirectMeaning ? result.translatedText : (wordThaiDict[word] || "0"),
           ...characterBreakdown
         };
       }
@@ -206,9 +246,9 @@ const analyzeSentenceSmart = async (sentence, index = 1) => {
 
   return {
     hanzi: sentence,
-    pinyin: thaiSentence.pinyin,
-    thai: thaiSentence.translatedText,
-    english: englishSentence.translatedText,
+    pinyin: thaiSentence.pinyin || "",
+    thai: thaiSentence.translatedText || "",
+    english: englishSentence.translatedText || "",
     blocks: wordDetails
   };
 };
@@ -281,7 +321,6 @@ export async function GET(request) {
       return NextResponse.json({ total: matches.length, items: matches });
     }
 
-    // Default: list summary of weeks
     const weeksSummary = Array.from({ length: 15 }, (_, i) => {
       const w = i + 1;
       const count = hsk300.filter((s) => s.week === w).length;
@@ -337,7 +376,7 @@ export async function POST(request) {
       }
     }
 
-    // Smart Analyzer using HSK Ground Truth + Morpheme Dictionary
+    // Smart Analyzer using HSK Ground Truth + Morpheme Dictionary (rate-limited, cached, bulletproof)
     const results = await mapWithConcurrency(sentences, 2, (sent, idx) =>
       analyzeSentenceSmart(sent, idx + 1)
     );

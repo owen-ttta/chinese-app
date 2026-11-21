@@ -302,19 +302,44 @@ export default function SentenceBreakdown() {
       const batchSize = 10;
       for (let index = 0; index < sentences.length; index += batchSize) {
         const batch = sentences.slice(index, index + batchSize);
-        const response = await fetch("/api/sentence-breakdown", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sentences: batch,
-            apiKey: geminiApiKey || undefined,
-            mode: aiMode ? "ai" : "smart"
-          })
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "วิเคราะห์ประโยคไม่สำเร็จ");
-        results.push(...data.results);
+        let batchResults = null;
+        let lastError = null;
+
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const response = await fetch("/api/sentence-breakdown", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sentences: batch,
+                apiKey: geminiApiKey || undefined,
+                mode: aiMode ? "ai" : "smart"
+              })
+            });
+            const data = await response.json();
+            if (response.ok && Array.isArray(data?.results)) {
+              batchResults = data.results;
+              break;
+            }
+            lastError = new Error(data?.error || `Server status ${response.status}`);
+          } catch (err) {
+            lastError = err;
+          }
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 1200));
+          }
+        }
+
+        if (!batchResults) {
+          throw lastError || new Error("วิเคราะห์ประโยคไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+        }
+
+        results.push(...batchResults);
         setAnalysisProgress(`${Math.min(index + batch.length, sentences.length)}/${sentences.length}`);
+
+        if (index + batchSize < sentences.length) {
+          await new Promise((r) => setTimeout(r, 300));
+        }
       }
 
       const hasOnlyEmptyItem =
