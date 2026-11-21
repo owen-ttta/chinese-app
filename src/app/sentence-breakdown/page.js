@@ -112,7 +112,6 @@ const buildGoogleDocsContent = (items, fontSettings = DEFAULT_FONT_SETTINGS) => 
       ${item.sentence.thai ? `<p style="font-size:${sentencePt}pt;font-weight:600;margin:6px 0 3px 0;color:#000000;">${escapeHtml(item.sentence.thai)}</p>` : ""}
     </div>`;
   }).join("");
-  }).join("");
 
   const html = `<div>${htmlItems}</div>`;
   const text = items.map((item) => {
