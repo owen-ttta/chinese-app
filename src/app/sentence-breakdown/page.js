@@ -206,11 +206,31 @@ export default function SentenceBreakdown() {
   // --- Font Settings & A4 Preview State ---
   const [fontSettings, setFontSettings] = useState(DEFAULT_FONT_SETTINGS);
   const [showFontPanel, setShowFontPanel] = useState(false);
-  const [previewZoom, setPreviewZoom] = useState(100);
+  const [previewZoom, setPreviewZoom] = useState("fit");
+  const [mobileTab, setMobileTab] = useState("editor"); // "editor" | "preview"
+  const [containerWidth, setContainerWidth] = useState(0);
 
   const previewRef = useRef(null);
   const importRef = useRef(null);
   const audioRef = useRef(null);
+  const a4ContainerRef = useRef(null);
+
+  useEffect(() => {
+    if (!a4ContainerRef.current) return;
+    const updateWidth = () => {
+      if (a4ContainerRef.current) {
+        setContainerWidth(a4ContainerRef.current.clientWidth);
+      }
+    };
+    updateWidth();
+    const ro = new ResizeObserver(updateWidth);
+    ro.observe(a4ContainerRef.current);
+    window.addEventListener("resize", updateWidth);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", updateWidth);
+    };
+  }, [mobileTab]);
 
   useEffect(() => {
     try {
@@ -721,12 +741,50 @@ export default function SentenceBreakdown() {
   const arrowPx = Math.round(Math.max(13, pinyinPx * 0.95));
   const topArrowPx = Math.round(Math.max(13, topNotePx * 0.95));
 
+  const a4WidthPx = 794; // 210mm in CSS 96 DPI
+  const paddingOffset = containerWidth < 480 ? 16 : 32;
+  const fitScale = containerWidth > 32
+    ? Math.min(1, Math.max(0.25, Number(((containerWidth - paddingOffset) / a4WidthPx).toFixed(3))))
+    : 0.8;
+  const currentScale = previewZoom === "fit" ? fitScale : (Number(previewZoom) || 100) / 100;
+
   return (
-    <main className="flex-1 min-h-screen bg-slate-100 py-8 px-4 md:px-8 font-sans">
-      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-8 items-start">
+    <main className="flex-1 min-h-screen bg-slate-100 py-4 sm:py-6 lg:py-8 px-2 sm:px-4 md:px-8 font-sans">
+      <div className="max-w-7xl mx-auto flex flex-col gap-4">
+        
+        {/* Mobile & Tablet Tab Switcher (< lg) */}
+        <div className="lg:hidden sticky top-2 z-40 bg-white/95 backdrop-blur-md p-1.5 rounded-2xl shadow-md border border-slate-200 flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => setMobileTab("editor")}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              mobileTab === "editor"
+                ? "bg-indigo-600 text-white shadow-xs"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+            }`}
+          >
+            <ZapIcon /> แก้ไขประโยค ({items.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileTab("preview");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              mobileTab === "preview"
+                ? "bg-indigo-600 text-white shadow-xs"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+            }`}
+          >
+            📄 ดูตัวอย่าง A4 (Preview)
+          </button>
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
         
         {/* Left Column: Editor */}
-        <div className="w-full lg:w-1/2 flex flex-col gap-6">
+        <div className={`w-full lg:w-1/2 flex-col gap-6 ${mobileTab === "editor" ? "flex" : "hidden lg:flex"}`}>
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-200 text-white">
               <ZapIcon />
@@ -833,23 +891,23 @@ export default function SentenceBreakdown() {
           </div>
           
           {/* Items List */}
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {items.map((item, itemIndex) => (
-              <div key={item.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative group transition-all hover:shadow-md">
+              <div key={item.id} className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200 relative group transition-all hover:shadow-md">
                 
-                <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
-                  <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <span className="bg-slate-100 text-slate-600 w-8 h-8 rounded-lg flex items-center justify-center text-sm">{itemIndex + 1}</span>
+                <div className="flex justify-between items-center mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-slate-100">
+                  <h2 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <span className="bg-slate-100 text-slate-600 w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-xs sm:text-sm">{itemIndex + 1}</span>
                     ประโยคที่ {itemIndex + 1}
                   </h2>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => moveItem(itemIndex, -1)} disabled={itemIndex === 0} className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition-colors disabled:opacity-25" title="ย้ายประโยคขึ้น"><ArrowUpIcon /></button>
-                    <button onClick={() => moveItem(itemIndex, 1)} disabled={itemIndex === items.length - 1} className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition-colors disabled:opacity-25" title="ย้ายประโยคลง"><ArrowDownIcon /></button>
-                    <button onClick={() => duplicateItem(item.id)} className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition-colors" title="คัดลอกประโยค"><CopyIcon /></button>
-                    <button onClick={() => playSentence(item.sentence.hanzi)} className="text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 p-2 rounded-lg transition-colors" title="ฟังเสียงประโยค"><VolumeIcon /></button>
+                  <div className="flex items-center gap-0.5 sm:gap-1">
+                    <button onClick={() => moveItem(itemIndex, -1)} disabled={itemIndex === 0} className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 p-1.5 sm:p-2 rounded-lg transition-colors disabled:opacity-25" title="ย้ายประโยคขึ้น"><ArrowUpIcon /></button>
+                    <button onClick={() => moveItem(itemIndex, 1)} disabled={itemIndex === items.length - 1} className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 p-1.5 sm:p-2 rounded-lg transition-colors disabled:opacity-25" title="ย้ายประโยคลง"><ArrowDownIcon /></button>
+                    <button onClick={() => duplicateItem(item.id)} className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 p-1.5 sm:p-2 rounded-lg transition-colors" title="คัดลอกประโยค"><CopyIcon /></button>
+                    <button onClick={() => playSentence(item.sentence.hanzi)} className="text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 p-1.5 sm:p-2 rounded-lg transition-colors" title="ฟังเสียงประโยค"><VolumeIcon /></button>
                     <button 
                       onClick={() => removeItem(item.id)}
-                      className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                      className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 sm:p-2 rounded-lg transition-colors"
                       title="ลบข้อนี้"
                     >
                       <TrashIcon />
@@ -857,14 +915,14 @@ export default function SentenceBreakdown() {
                   </div>
                 </div>
                 
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-6">
                   {/* Sentence Info */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <InputField label="เลขข้อ" value={item.sentence.index} onChange={(e) => updateSentence(item.id, 'index', e.target.value)} className="sm:col-span-1" />
-                    <InputField label="จีน" value={item.sentence.hanzi} onChange={(e) => updateSentence(item.id, 'hanzi', e.target.value)} className="sm:col-span-1" />
-                    <InputField label="พินอิน" value={item.sentence.pinyin} onChange={(e) => updateSentence(item.id, 'pinyin', e.target.value)} className="sm:col-span-1" />
-                    <InputField label="อังกฤษ" value={item.sentence.english} onChange={(e) => updateSentence(item.id, 'english', e.target.value)} className="sm:col-span-1" />
-                    <InputField label="ไทย" value={item.sentence.thai} onChange={(e) => updateSentence(item.id, 'thai', e.target.value)} className="sm:col-span-2" />
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
+                    <InputField label="เลขข้อ" value={item.sentence.index} onChange={(e) => updateSentence(item.id, 'index', e.target.value)} className="col-span-1" />
+                    <InputField label="จีน" value={item.sentence.hanzi} onChange={(e) => updateSentence(item.id, 'hanzi', e.target.value)} className="col-span-1 sm:col-span-3" />
+                    <InputField label="พินอิน" value={item.sentence.pinyin} onChange={(e) => updateSentence(item.id, 'pinyin', e.target.value)} className="col-span-2 sm:col-span-2" />
+                    <InputField label="อังกฤษ" value={item.sentence.english} onChange={(e) => updateSentence(item.id, 'english', e.target.value)} className="col-span-2 sm:col-span-2" />
+                    <InputField label="ไทย" value={item.sentence.thai} onChange={(e) => updateSentence(item.id, 'thai', e.target.value)} className="col-span-2 sm:col-span-4" />
                   </div>
 
                   {/* Word Blocks */}
@@ -932,25 +990,37 @@ export default function SentenceBreakdown() {
         </div>
 
         {/* Right Column: Preview (Sticky, Strict A4 Size Only) */}
-        <div className="w-full lg:w-1/2 lg:sticky lg:top-8 flex flex-col gap-3">
+        <div className={`w-full lg:w-1/2 lg:sticky lg:top-6 flex-col gap-3 ${mobileTab === "preview" ? "flex" : "hidden lg:flex"}`}>
           
           {/* Action Header */}
-          <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-800">ตัวอย่าง (Preview)</h2>
-              <span className="px-2 py-0.5 text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md">
-                ขนาด A4 เท่านั้น
-              </span>
+          <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="flex items-center justify-between w-full sm:w-auto gap-2">
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-bold text-slate-800">ตัวอย่าง (Preview)</h2>
+                <span className="px-2 py-0.5 text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md">
+                  ขนาด A4
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileTab("editor");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className="lg:hidden text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg flex items-center gap-1"
+              >
+                ✍️ กลับไปแก้ไข
+              </button>
             </div>
-            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-              <button disabled={Boolean(exporting)} onClick={downloadImage} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400 text-white px-3.5 py-2 rounded-xl font-semibold shadow-xs transition-colors text-xs cursor-pointer disabled:cursor-wait">
-                <DownloadIcon /> {exporting === "image" ? "กำลังสร้าง…" : "รูปภาพ"}
+            <div className="grid grid-cols-3 gap-1.5 w-full sm:flex sm:w-auto">
+              <button disabled={Boolean(exporting)} onClick={downloadImage} className="flex-1 sm:flex-none flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400 text-white px-2.5 sm:px-3.5 py-2 rounded-xl font-semibold shadow-xs transition-colors text-[11px] sm:text-xs cursor-pointer disabled:cursor-wait">
+                <DownloadIcon /> {exporting === "image" ? "สร้าง…" : "รูปภาพ"}
               </button>
-              <button disabled={Boolean(exporting)} onClick={downloadDocx} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-3.5 py-2 rounded-xl font-semibold shadow-xs transition-colors text-xs cursor-pointer disabled:cursor-wait">
-                <DownloadIcon /> {exporting === "docx" ? "กำลังสร้าง…" : "Word"}
+              <button disabled={Boolean(exporting)} onClick={downloadDocx} className="flex-1 sm:flex-none flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-2.5 sm:px-3.5 py-2 rounded-xl font-semibold shadow-xs transition-colors text-[11px] sm:text-xs cursor-pointer disabled:cursor-wait">
+                <DownloadIcon /> {exporting === "docx" ? "สร้าง…" : "Word"}
               </button>
-              <button disabled={Boolean(exporting)} onClick={copyToGoogleDocs} className="basis-full sm:basis-auto flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white px-3.5 py-2 rounded-xl font-semibold shadow-xs transition-colors text-xs cursor-pointer disabled:cursor-wait">
-                <CopyIcon /> {exporting === "gdocs" ? "กำลังคัดลอก…" : "Google Docs"}
+              <button disabled={Boolean(exporting)} onClick={copyToGoogleDocs} className="flex-1 sm:flex-none flex items-center justify-center gap-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white px-2.5 sm:px-3.5 py-2 rounded-xl font-semibold shadow-xs transition-colors text-[11px] sm:text-xs cursor-pointer disabled:cursor-wait">
+                <CopyIcon /> {exporting === "gdocs" ? "คัดลอก…" : "Google Docs"}
               </button>
             </div>
           </div>
@@ -958,7 +1028,7 @@ export default function SentenceBreakdown() {
           {/* Font Size & A4 Zoom Toolbar */}
           <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <span className="text-xs font-bold text-slate-700">ขนาดฟอนต์:</span>
                 <button
                   type="button"
@@ -968,7 +1038,7 @@ export default function SentenceBreakdown() {
                 >
                   A-
                 </button>
-                <span className="text-xs font-bold text-indigo-700 px-1 min-w-[42px] text-center">
+                <span className="text-xs font-bold text-indigo-700 px-1 min-w-[38px] text-center">
                   {fontSettings.scale}%
                 </span>
                 <button
@@ -988,25 +1058,30 @@ export default function SentenceBreakdown() {
                       : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
                   }`}
                 >
-                  ⚙️ {showFontPanel ? "ปิดแถบปรับขนาด" : "ปรับขนาดละเอียด"}
+                  ⚙️ {showFontPanel ? "ปิด" : "ปรับละเอียด"}
                 </button>
               </div>
 
               {/* Viewport Zoom */}
               <div className="flex items-center gap-1 text-xs">
-                <span className="text-slate-400 text-[11px]">ซูม A4:</span>
-                {[75, 85, 100].map((z) => (
+                <span className="text-slate-400 text-[11px]">ซูม:</span>
+                {[
+                  { label: "พอดีจอ", val: "fit" },
+                  { label: "50%", val: 50 },
+                  { label: "75%", val: 75 },
+                  { label: "100%", val: 100 }
+                ].map(({ label, val }) => (
                   <button
-                    key={z}
+                    key={val}
                     type="button"
-                    onClick={() => setPreviewZoom(z)}
+                    onClick={() => setPreviewZoom(val)}
                     className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all ${
-                      previewZoom === z
+                      previewZoom === val
                         ? "bg-slate-800 text-white"
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                     }`}
                   >
-                    {z}%
+                    {label}
                   </button>
                 ))}
               </div>
@@ -1127,30 +1202,42 @@ export default function SentenceBreakdown() {
           </div>
           
           {/* Strictly A4 Document Canvas */}
-          <div className="bg-[#525659] p-4 sm:p-6 rounded-2xl border border-slate-300 overflow-x-auto shadow-inner flex flex-col items-center max-h-[calc(100vh-140px)] overflow-y-auto">
+          <div 
+            ref={a4ContainerRef}
+            className="bg-[#525659] p-2.5 sm:p-4 md:p-6 rounded-2xl border border-slate-300 overflow-x-auto shadow-inner flex flex-col items-center max-h-[calc(100vh-140px)] overflow-y-auto"
+          >
             {/* A4 Sheet Dimensions Indicator */}
-            <div className="w-full max-w-[210mm] flex items-center justify-between text-slate-300 text-xs mb-3 px-1 select-none">
-              <span className="flex items-center gap-1.5 font-medium">
+            <div className="w-full max-w-[210mm] flex items-center justify-between text-slate-300 text-xs mb-2.5 px-1 select-none">
+              <span className="flex items-center gap-1.5 font-medium text-[11px] sm:text-xs">
                 <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                เอกสาร A4 (210 × 297 มม.) • สัดส่วนต้นฉบับ
+                เอกสาร A4 (210 × 297 มม.)
               </span>
-              <span className="text-[11px] text-slate-400">
-                ฟอนต์ {fontSettings.scale}% • มุมมอง {previewZoom}%
+              <span className="text-[10px] sm:text-[11px] text-slate-400">
+                สเกล {Math.round(currentScale * 100)}% {previewZoom === "fit" ? "(พอดีจอ)" : ""}
               </span>
             </div>
 
-            {/* A4 Paper Sheet strictly 210mm width */}
+            {/* A4 Paper Sheet strictly 210mm width, scaled responsive wrapper */}
             <div
               style={{
-                transform: previewZoom !== 100 ? `scale(${previewZoom / 100})` : undefined,
-                transformOrigin: "top center",
-                marginBottom: previewZoom !== 100 ? `${(previewZoom / 100 - 1) * 350}px` : undefined,
-                width: "210mm",
-                minWidth: "210mm",
-                maxWidth: "210mm",
+                width: `${Math.round(a4WidthPx * currentScale)}px`,
+                maxWidth: "100%",
+                display: "flex",
+                justifyContent: "center",
+                transition: "width 0.15s ease-out",
               }}
-              className="transition-transform duration-150"
             >
+              <div
+                style={{
+                  transform: `scale(${currentScale})`,
+                  transformOrigin: "top center",
+                  marginBottom: currentScale < 1 ? `-${Math.round((1 - currentScale) * 1100)}px` : undefined,
+                  width: "210mm",
+                  minWidth: "210mm",
+                  maxWidth: "210mm",
+                }}
+                className="transition-transform duration-150"
+              >
               <div 
                 ref={previewRef} 
                 data-preview-paper="true"
@@ -1230,18 +1317,36 @@ export default function SentenceBreakdown() {
               </div>
             </div>
           </div>
-          
         </div>
+          
       </div>
+    </div>
+  </div>
+
+  {/* Floating Preview Button on Mobile/Tablet when in Editor */}
+  {mobileTab === "editor" && (
+    <div className="lg:hidden fixed bottom-6 right-5 z-40">
+      <button
+        type="button"
+        onClick={() => {
+          setMobileTab("preview");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+        className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white px-4 py-3 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold border border-indigo-400 transition-all cursor-pointer"
+      >
+        📄 ดูตัวอย่าง A4 ({items.length})
+      </button>
+    </div>
+  )}
 
       {/* HSK 300 Library Modal */}
       {showLibraryModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full max-h-[92vh] sm:max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in duration-200">
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+            <div className="p-3.5 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div>
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
                   <BookIcon /> คลังประโยค HSK 300 ประโยค (15 สัปดาห์)
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -1250,15 +1355,15 @@ export default function SentenceBreakdown() {
               </div>
               <button
                 onClick={() => setShowLibraryModal(false)}
-                className="w-8 h-8 rounded-lg bg-slate-200/80 hover:bg-slate-300 text-slate-700 flex items-center justify-center text-sm font-bold"
+                className="w-8 h-8 rounded-lg bg-slate-200/80 hover:bg-slate-300 text-slate-700 flex items-center justify-center text-sm font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
             {/* Week Pills & Filter Bar */}
-            <div className="p-4 border-b border-slate-100 bg-white flex flex-col gap-3">
-              <div className="flex items-center gap-2">
+            <div className="p-3 sm:p-4 border-b border-slate-100 bg-white flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <input
                   type="text"
                   value={searchHskQuery}
@@ -1267,24 +1372,24 @@ export default function SentenceBreakdown() {
                   className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 {selectedWeek > 0 && !searchHskQuery && (
-                  <button
-                    onClick={() => loadHskWeek(selectedWeek, false)}
-                    className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition-all shadow-xs shrink-0"
-                  >
-                    + โหลดทั้ง Week {selectedWeek} (20 ประโยค)
-                  </button>
-                )}
-                {selectedWeek > 0 && !searchHskQuery && (
-                  <button
-                    onClick={() => {
-                      if (window.confirm(`แทนที่งานปัจจุบันด้วย Week ${selectedWeek} ใช่หรือไม่?`)) {
-                        loadHskWeek(selectedWeek, true);
-                      }
-                    }}
-                    className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold rounded-xl transition-all shrink-0"
-                  >
-                    แทนที่ด้วย Week {selectedWeek}
-                  </button>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button
+                      onClick={() => loadHskWeek(selectedWeek, false)}
+                      className="flex-1 sm:flex-none px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition-all shadow-xs"
+                    >
+                      + โหลด Week {selectedWeek} (20 ข้อ)
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`แทนที่งานปัจจุบันด้วย Week ${selectedWeek} ใช่หรือไม่?`)) {
+                          loadHskWeek(selectedWeek, true);
+                        }
+                      }}
+                      className="flex-1 sm:flex-none px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold rounded-xl transition-all"
+                    >
+                      แทนที่ Week {selectedWeek}
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1389,11 +1494,11 @@ export default function SentenceBreakdown() {
 
       {/* AI System Prompt Modal */}
       {showPromptModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in duration-200">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-3xl w-full max-h-[92vh] sm:max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in duration-200">
+            <div className="p-3.5 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div>
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
                   <SparklesIcon /> AI System Instruction & Prompt
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -1402,21 +1507,21 @@ export default function SentenceBreakdown() {
               </div>
               <button
                 onClick={() => setShowPromptModal(false)}
-                className="w-8 h-8 rounded-lg bg-slate-200/80 hover:bg-slate-300 text-slate-700 flex items-center justify-center text-sm font-bold"
+                className="w-8 h-8 rounded-lg bg-slate-200/80 hover:bg-slate-300 text-slate-700 flex items-center justify-center text-sm font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
-            <div className="p-5 overflow-y-auto max-h-[60vh]">
-              <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono whitespace-pre-wrap leading-relaxed select-all">
+            <div className="p-3 sm:p-5 overflow-y-auto max-h-[60vh]">
+              <pre className="p-3 sm:p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono whitespace-pre-wrap leading-relaxed select-all">
                 {SYSTEM_PROMPT}
               </pre>
             </div>
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+            <div className="p-3 sm:p-4 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
               <span className="text-xs text-slate-500">
-                ไฟล์ Dataset พร้อมใช้งานอยู่ที่ <code className="bg-slate-200 px-1 py-0.5 rounded text-[11px]">ai-training/dataset.jsonl</code>
+                ไฟล์ Dataset อยู่ที่ <code className="bg-slate-200 px-1 py-0.5 rounded text-[11px]">ai-training/dataset.jsonl</code>
               </span>
-              <div className="flex gap-2">
+              <div className="flex gap-2 w-full sm:w-auto justify-end">
                 <button
                   onClick={async () => {
                     await navigator.clipboard.writeText(SYSTEM_PROMPT);
