@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas";
+import hsk300Data from "@/data/hsk300.json";
+import { SYSTEM_PROMPT } from "@/data/aiPrompt";
 
 const STORAGE_KEY = "chinese-app:sentence-breakdown:v1";
 
@@ -127,6 +129,12 @@ const buildGoogleDocsContent = (items) => {
 };
 
 // --- Icons ---
+const BookIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
+);
+const SparklesIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
+);
 const TrashIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
 );
@@ -170,6 +178,13 @@ export default function SentenceBreakdown() {
   const [isHydrated, setIsHydrated] = useState(false);
   const [exporting, setExporting] = useState("");
   const [notice, setNotice] = useState("");
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [selectedWeek, setSelectedWeek] = useState(1);
+  const [searchHskQuery, setSearchHskQuery] = useState("");
+  const [aiMode, setAiMode] = useState(false);
+  const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
 
   const previewRef = useRef(null);
   const importRef = useRef(null);
@@ -179,6 +194,8 @@ export default function SentenceBreakdown() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) setItems(normalizeItems(JSON.parse(saved)));
+      const savedKey = localStorage.getItem("chinese_gemini_api_key");
+      if (savedKey) setGeminiApiKey(savedKey);
     } catch (error) {
       console.error("Failed to restore sentence breakdown", error);
       setNotice("ไม่สามารถกู้คืนงานที่บันทึกไว้ได้");
@@ -212,6 +229,62 @@ export default function SentenceBreakdown() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState("");
 
+  const handleSaveApiKey = (val) => {
+    setGeminiApiKey(val);
+    try {
+      if (val) localStorage.setItem("chinese_gemini_api_key", val);
+      else localStorage.removeItem("chinese_gemini_api_key");
+    } catch {}
+  };
+
+  const loadHskSentence = (hskItem) => {
+    const hasOnlyEmptyItem =
+      items.length === 1 &&
+      items[0].blocks.length === 0 &&
+      !items[0].sentence.hanzi;
+    const newItem = {
+      id: createId(),
+      sentence: {
+        index: hasOnlyEmptyItem ? `${items.length}.` : `${items.length + 1}.`,
+        hanzi: hskItem.sentence.hanzi,
+        pinyin: hskItem.sentence.pinyin,
+        english: hskItem.sentence.english,
+        thai: hskItem.sentence.thai
+      },
+      blocks: hskItem.blocks.map((block) => createBlock(block))
+    };
+    setItems((current) => hasOnlyEmptyItem ? [newItem] : [...current, newItem]);
+    setNotice(`นำเข้าประโยค ${hskItem.num}: ${hskItem.sentence.hanzi} แล้ว`);
+  };
+
+  const loadHskWeek = (weekNum, replace = false) => {
+    const weekItems = hsk300Data.filter((s) => s.week === weekNum);
+    const converted = weekItems.map((hskItem, idx) => ({
+      id: createId(),
+      sentence: {
+        index: `${replace ? idx + 1 : items.length + idx + 1}.`,
+        hanzi: hskItem.sentence.hanzi,
+        pinyin: hskItem.sentence.pinyin,
+        english: hskItem.sentence.english,
+        thai: hskItem.sentence.thai
+      },
+      blocks: hskItem.blocks.map((block) => createBlock(block))
+    }));
+
+    if (replace) {
+      setItems(converted);
+      setNotice(`โหลดสัปดาห์ที่ ${weekNum} (${converted.length} ประโยค) แทนที่เรียบร้อย`);
+    } else {
+      const hasOnlyEmptyItem =
+        items.length === 1 &&
+        items[0].blocks.length === 0 &&
+        !items[0].sentence.hanzi;
+      setItems((current) => hasOnlyEmptyItem ? converted : [...current, ...converted]);
+      setNotice(`เพิ่มสัปดาห์ที่ ${weekNum} (${converted.length} ประโยค) เรียบร้อย`);
+    }
+    setShowLibraryModal(false);
+  };
+
   const handleQuickGenerate = async () => {
     const sentences = quickInput
       .split(/\r?\n/)
@@ -232,7 +305,11 @@ export default function SentenceBreakdown() {
         const response = await fetch("/api/sentence-breakdown", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sentences: batch })
+          body: JSON.stringify({
+            sentences: batch,
+            apiKey: geminiApiKey || undefined,
+            mode: aiMode ? "ai" : "smart"
+          })
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "วิเคราะห์ประโยคไม่สำเร็จ");
@@ -495,29 +572,34 @@ export default function SentenceBreakdown() {
         );
 
         if (item.blocks.length > 0) {
-          const rows = [];
-          const hasTopNote = item.blocks.some(b => b.topNote);
-          const hasTopArrow = item.blocks.some(b => b.showTopArrow);
+          const WORDS_PER_ROW = 8;
+          for (let startIdx = 0; startIdx < item.blocks.length; startIdx += WORDS_PER_ROW) {
+            const chunk = item.blocks.slice(startIdx, startIdx + WORDS_PER_ROW);
+            const rows = [];
+            const hasTopNote = chunk.some(b => b.topNote);
+            const hasTopArrow = chunk.some(b => b.showTopArrow);
 
-          if (hasTopNote) {
-            rows.push(new TableRow({ children: item.blocks.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.topNote || "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
-          }
-          if (hasTopArrow) {
-            rows.push(new TableRow({ children: item.blocks.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.showTopArrow ? "↑" : "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
-          }
-          rows.push(new TableRow({ children: item.blocks.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.thai || "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
-          rows.push(new TableRow({ children: item.blocks.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.thai ? "↑" : "", size: 24, color: "94A3B8" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.CENTER })) }));
-          rows.push(new TableRow({ children: item.blocks.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.hanzi || "", size: 36, bold: true })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.CENTER })) }));
-          rows.push(new TableRow({ children: item.blocks.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.pinyin ? "↑" : "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.TOP })) }));
-          rows.push(new TableRow({ children: item.blocks.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.pinyin || "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.TOP })) }));
+            if (hasTopNote) {
+              rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.topNote || "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
+            }
+            if (hasTopArrow) {
+              rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.showTopArrow ? "↑" : "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
+            }
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.thai || "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.thai ? "↑" : "", size: 24, color: "94A3B8" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.CENTER })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.hanzi || "", size: 36, bold: true })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.CENTER })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.pinyin ? "↑" : "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.TOP })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.pinyin || "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.TOP })) }));
 
-          const table = new Table({
-            rows: rows,
-            layout: TableLayoutType.FIXED,
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            margins: { top: 0, bottom: 0, left: 50, right: 50 }
-          });
-          children.push(table);
+            const table = new Table({
+              rows: rows,
+              layout: TableLayoutType.FIXED,
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              margins: { top: 0, bottom: 0, left: 50, right: 50 }
+            });
+            children.push(table);
+            children.push(new Paragraph({ text: "", spacing: { after: 100 } }));
+          }
         }
 
         if (item.sentence.hanzi) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.hanzi, size: 28 })], spacing: { before: 200 } }));
@@ -563,6 +645,9 @@ export default function SentenceBreakdown() {
             <button onClick={() => importRef.current?.click()} className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors">
               นำเข้าโปรเจกต์
             </button>
+            <button onClick={() => setShowLibraryModal(true)} className="px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition-colors flex items-center gap-1.5 border border-indigo-200">
+              <BookIcon /> คลัง 300 ประโยค (HSK Week 1-15)
+            </button>
             <input ref={importRef} type="file" accept="application/json,.json" onChange={importProject} className="hidden" />
             <button onClick={clearProject} className="ml-auto px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 text-xs font-semibold transition-colors">
               เริ่มใหม่
@@ -580,9 +665,56 @@ export default function SentenceBreakdown() {
           
           {/* Quick Input Section */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-            <h2 className="text-sm font-bold text-indigo-700 flex items-center gap-2 mb-2">
-              <ZapIcon /> สร้างอัตโนมัติจากประโยคจีน
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h2 className="text-sm font-bold text-indigo-700 flex items-center gap-2">
+                <ZapIcon /> สร้างอัตโนมัติจากประโยคจีน
+              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPromptModal(true)}
+                  className="px-2.5 py-1 text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors flex items-center gap-1"
+                >
+                  <SparklesIcon /> ดู AI Prompt
+                </button>
+                <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setAiMode(false)}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${!aiMode ? "bg-white text-indigo-700 shadow-xs" : "text-slate-500 hover:text-slate-700"}`}
+                  >
+                    Smart (คลัง 300)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAiMode(true)}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all flex items-center gap-1 ${aiMode ? "bg-indigo-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-700"}`}
+                  >
+                    <SparklesIcon /> AI (Gemini)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {aiMode && (
+              <div className="mb-3 p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex flex-col gap-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-indigo-900 flex items-center gap-1">
+                    <SparklesIcon /> Gemini API Key (ตัวเลือกเสริม):
+                  </span>
+                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+                    รับคีย์ฟรีที่ Google AI Studio →
+                  </a>
+                </div>
+                <input
+                  type="password"
+                  value={geminiApiKey}
+                  onChange={(e) => handleSaveApiKey(e.target.value)}
+                  placeholder="AIzaSy... (หากเว้นว่างจะใช้คีย์ของระบบหรือ Smart Fallback)"
+                  className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                />
+              </div>
+            )}
             <p className="text-xs text-slate-500 mb-4 leading-relaxed bg-indigo-50/50 p-3 rounded-lg border border-indigo-100">
               ใส่เฉพาะประโยคภาษาจีน <b className="text-indigo-700">หนึ่งประโยคต่อหนึ่งบรรทัด</b>
               ระบบจะแยกคำ สร้างพินอิน และแปลไทย–อังกฤษให้อัตโนมัติ
@@ -767,6 +899,212 @@ export default function SentenceBreakdown() {
           
         </div>
       </div>
+
+      {/* HSK 300 Library Modal */}
+      {showLibraryModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in duration-200">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <BookIcon /> คลังประโยค HSK 300 ประโยค (15 สัปดาห์)
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  ประโยคมาตรฐานพร้อมคำแยกรากศัพท์ (topNote), พินอิน, และคำแปล 100% จากเอกสารต้นฉบับ
+                </p>
+              </div>
+              <button
+                onClick={() => setShowLibraryModal(false)}
+                className="w-8 h-8 rounded-lg bg-slate-200/80 hover:bg-slate-300 text-slate-700 flex items-center justify-center text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Week Pills & Filter Bar */}
+            <div className="p-4 border-b border-slate-100 bg-white flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={searchHskQuery}
+                  onChange={(e) => setSearchHskQuery(e.target.value)}
+                  placeholder="ค้นหาจีน, พินอิน, หรือไทย (เช่น 我爱你, ตู้เย็น, 201)..."
+                  className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                {selectedWeek > 0 && !searchHskQuery && (
+                  <button
+                    onClick={() => loadHskWeek(selectedWeek, false)}
+                    className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition-all shadow-xs shrink-0"
+                  >
+                    + โหลดทั้ง Week {selectedWeek} (20 ประโยค)
+                  </button>
+                )}
+                {selectedWeek > 0 && !searchHskQuery && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`แทนที่งานปัจจุบันด้วย Week ${selectedWeek} ใช่หรือไม่?`)) {
+                        loadHskWeek(selectedWeek, true);
+                      }
+                    }}
+                    className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold rounded-xl transition-all shrink-0"
+                  >
+                    แทนที่ด้วย Week {selectedWeek}
+                  </button>
+                )}
+              </div>
+
+              {!searchHskQuery && (
+                <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                  {Array.from({ length: 15 }, (_, i) => i + 1).map((w) => (
+                    <button
+                      key={w}
+                      onClick={() => setSelectedWeek(w)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all ${
+                        selectedWeek === w
+                          ? "bg-indigo-600 text-white shadow-xs"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      Week {w} ({(w - 1) * 20 + 1}-{w * 20})
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Sentences List */}
+            <div className="p-4 overflow-y-auto max-h-[50vh] flex flex-col gap-3 bg-slate-50/50">
+              {(() => {
+                const filtered = hsk300Data.filter((item) => {
+                  if (searchHskQuery.trim()) {
+                    const q = searchHskQuery.toLowerCase();
+                    return (
+                      item.sentence.hanzi.includes(q) ||
+                      item.sentence.pinyin.toLowerCase().includes(q) ||
+                      item.sentence.thai.includes(q) ||
+                      String(item.num).includes(q)
+                    );
+                  }
+                  return item.week === selectedWeek;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="text-center py-10 text-slate-400 text-sm">
+                      ไม่พบประโยคที่ตรงกับคำค้นหา
+                    </div>
+                  );
+                }
+
+                return filtered.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-4 bg-white rounded-xl border border-slate-200 flex items-start justify-between gap-4 hover:border-indigo-300 hover:shadow-xs transition-all"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-bold text-slate-900 text-sm">
+                          {item.num}. {item.sentence.hanzi}
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          {item.sentence.pinyin}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 mb-2">
+                        {item.sentence.thai} • <span className="text-slate-400">{item.sentence.english}</span>
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {item.blocks.map((b, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center gap-1 text-[11px] bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded text-slate-700"
+                          >
+                            <span className="font-semibold">{b.hanzi}</span>
+                            <span className="text-slate-400 text-[10px]">({b.thai})</span>
+                            {b.topNote && (
+                              <span className="text-indigo-600 text-[10px] font-mono">[{b.topNote}]</span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => loadHskSentence(item)}
+                      className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold rounded-lg shrink-0 transition-colors"
+                    >
+                      + นำเข้า
+                    </button>
+                  </div>
+                ));
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 border-t border-slate-100 bg-white flex justify-end">
+              <button
+                onClick={() => setShowLibraryModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI System Prompt Modal */}
+      {showPromptModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in duration-200">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <SparklesIcon /> AI System Instruction & Prompt
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  คำสั่งฝึกสอน AI สำหรับนำไปใช้ใน ChatGPT, Claude, หรือ Gemini Studio เพื่อสร้างรูปแบบเอกสารนี้
+                </p>
+              </div>
+              <button
+                onClick={() => setShowPromptModal(false)}
+                className="w-8 h-8 rounded-lg bg-slate-200/80 hover:bg-slate-300 text-slate-700 flex items-center justify-center text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto max-h-[60vh]">
+              <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono whitespace-pre-wrap leading-relaxed select-all">
+                {SYSTEM_PROMPT}
+              </pre>
+            </div>
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+              <span className="text-xs text-slate-500">
+                ไฟล์ Dataset พร้อมใช้งานอยู่ที่ <code className="bg-slate-200 px-1 py-0.5 rounded text-[11px]">ai-training/dataset.jsonl</code>
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(SYSTEM_PROMPT);
+                    setCopiedPrompt(true);
+                    setTimeout(() => setCopiedPrompt(false), 2000);
+                  }}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-xs"
+                >
+                  <CopyIcon /> {copiedPrompt ? "คัดลอกเรียบร้อย!" : "คัดลอก Prompt"}
+                </button>
+                <button
+                  onClick={() => setShowPromptModal(false)}
+                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-xl"
+                >
+                  ปิด
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </main>
   );
 }

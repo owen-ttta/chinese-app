@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import hsk300 from "@/data/hsk300.json";
+import morphemeDict from "@/data/morphemeDict.json";
+import charDict from "@/data/charDict.json";
+import { SYSTEM_PROMPT } from "@/data/aiPrompt";
 
 const MAX_SENTENCES = 20;
 const MAX_SENTENCE_LENGTH = 500;
@@ -12,6 +16,15 @@ const PRESERVED_WORDS = new Set([
 const NO_DIRECT_MEANING_WORDS = new Set([
   "的", "地", "得", "了", "着", "过", "吗", "呢", "吧", "啊", "呀", "嘛", "么"
 ]);
+
+// Map of clean Chinese text to HSK ground truth item
+const hskMap = new Map();
+hsk300.forEach((item) => {
+  const cleanHanzi = (item.sentence.hanzi || "").replace(/[^\p{Script=Han}]/gu, "");
+  if (cleanHanzi) {
+    hskMap.set(cleanHanzi, item);
+  }
+});
 
 const mapWithConcurrency = async (values, limit, mapper) => {
   const results = new Array(values.length);
@@ -91,30 +104,77 @@ const segmentChinese = (sentence) => {
     });
 };
 
-const analyzeSentence = async (sentence) => {
+const analyzeSentenceSmart = async (sentence, index = 1) => {
+  // Check exact match in HSK 300 ground truth
+  const cleanHanzi = sentence.replace(/[^\p{Script=Han}]/gu, "");
+  if (hskMap.has(cleanHanzi)) {
+    const matched = hskMap.get(cleanHanzi);
+    return {
+      hanzi: matched.sentence.hanzi,
+      pinyin: matched.sentence.pinyin,
+      thai: matched.sentence.thai,
+      english: matched.sentence.english,
+      blocks: matched.blocks
+    };
+  }
+
   const words = segmentChinese(sentence);
   if (words.length === 0) throw new Error("No Chinese words found");
 
   const getCharacterBreakdown = async (word) => {
+    // 1. Check learned compound dictionary from 300 HSK sentences
+    if (morphemeDict[word]) {
+      return { topNote: morphemeDict[word], showTopArrow: true };
+    }
+
     const characters = Array.from(word);
     if (characters.length < 2) {
       return { topNote: "", showTopArrow: false };
     }
 
-    const meanings = await mapWithConcurrency(
+    // 2. Check individual characters in charDict or suffix rules
+    const meanings = [];
+    let allFound = true;
+    for (const char of characters) {
+      if (char === "子" || char === "儿") {
+        meanings.push("0");
+      } else if (charDict[char]) {
+        meanings.push(charDict[char]);
+      } else if (NO_DIRECT_MEANING_WORDS.has(char)) {
+        meanings.push("0");
+      } else {
+        allFound = false;
+        break;
+      }
+    }
+
+    if (allFound) {
+      return {
+        topNote: meanings.join(" + "),
+        showTopArrow: true
+      };
+    }
+
+    // 3. Fallback to translation service
+    const translatedMeanings = await mapWithConcurrency(
       characters,
       4,
       async (character) => {
-        if (NO_DIRECT_MEANING_WORDS.has(character)) return "0";
-        const result = await translate(character, "th");
-        return result.translatedText && result.translatedText !== character
-          ? result.translatedText
-          : "0";
+        if (charDict[character]) return charDict[character];
+        if (NO_DIRECT_MEANING_WORDS.has(character) || character === "子") return "0";
+        try {
+          const result = await translate(character, "th");
+          return result.translatedText && result.translatedText !== character
+            ? result.translatedText
+            : "0";
+        } catch {
+          return "0";
+        }
       }
     );
 
     return {
-      topNote: meanings.join(" + "),
+      topNote: translatedMeanings.join(" + "),
       showTopArrow: true
     };
   };
@@ -153,6 +213,88 @@ const analyzeSentence = async (sentence) => {
   };
 };
 
+const analyzeWithGemini = async (sentences, apiKey) => {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const prompt = `${SYSTEM_PROMPT}\n\nกรุณาวิเคราะห์ประโยคต่อไปนี้:\n${sentences.map((s, idx) => `${idx + 1}. ${s}`).join("\n")}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.1
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  const textOutput = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!textOutput) throw new Error("Empty response from Gemini");
+
+  const parsed = JSON.parse(textOutput);
+  if (Array.isArray(parsed?.results)) {
+    return parsed.results.map((item) => ({
+      hanzi: item.sentence?.hanzi || "",
+      pinyin: item.sentence?.pinyin || "",
+      thai: item.sentence?.thai || "",
+      english: item.sentence?.english || "",
+      blocks: Array.isArray(item.blocks) ? item.blocks : []
+    }));
+  }
+  throw new Error("Invalid format from Gemini response");
+};
+
+// GET handler: retrieve HSK 300 sentences or search
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const week = searchParams.get("week");
+    const q = searchParams.get("q")?.toLowerCase();
+    const num = searchParams.get("num");
+
+    if (num) {
+      const item = hsk300.find((s) => s.num === parseInt(num, 10));
+      if (!item) return NextResponse.json({ error: "Sentence not found" }, { status: 404 });
+      return NextResponse.json({ item });
+    }
+
+    if (week) {
+      const weekNum = parseInt(week, 10);
+      const items = hsk300.filter((s) => s.week === weekNum);
+      return NextResponse.json({ week: weekNum, total: items.length, items });
+    }
+
+    if (q) {
+      const matches = hsk300.filter((s) =>
+        (s.sentence.hanzi && s.sentence.hanzi.includes(q)) ||
+        (s.sentence.pinyin && s.sentence.pinyin.toLowerCase().includes(q)) ||
+        (s.sentence.thai && s.sentence.thai.includes(q)) ||
+        (s.sentence.english && s.sentence.english.toLowerCase().includes(q))
+      ).slice(0, 50);
+      return NextResponse.json({ total: matches.length, items: matches });
+    }
+
+    // Default: list summary of weeks
+    const weeksSummary = Array.from({ length: 15 }, (_, i) => {
+      const w = i + 1;
+      const count = hsk300.filter((s) => s.week === w).length;
+      return { week: w, count, start: (w - 1) * 20 + 1, end: w * 20 };
+    });
+
+    return NextResponse.json({ totalSentences: hsk300.length, weeks: weeksSummary });
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// POST handler: analyze sentences via AI or Smart Fallback
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -182,8 +324,24 @@ export async function POST(request) {
       );
     }
 
-    const results = await mapWithConcurrency(sentences, 2, analyzeSentence);
-    return NextResponse.json({ results });
+    // Check API Key for AI mode
+    const apiKey = body?.apiKey || request.headers.get("x-gemini-key") || process.env.GEMINI_API_KEY;
+    const preferAI = body?.mode === "ai" || Boolean(apiKey);
+
+    if (preferAI && apiKey) {
+      try {
+        const aiResults = await analyzeWithGemini(sentences, apiKey);
+        return NextResponse.json({ results: aiResults, source: "ai" });
+      } catch (aiError) {
+        console.warn("AI analysis failed, falling back to smart analyzer:", aiError.message);
+      }
+    }
+
+    // Smart Analyzer using HSK Ground Truth + Morpheme Dictionary
+    const results = await mapWithConcurrency(sentences, 2, (sent, idx) =>
+      analyzeSentenceSmart(sent, idx + 1)
+    );
+    return NextResponse.json({ results, source: "smart" });
   } catch (error) {
     console.error("Sentence breakdown error:", error);
     return NextResponse.json(
