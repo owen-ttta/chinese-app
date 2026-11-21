@@ -76,21 +76,21 @@ const buildGoogleDocsContent = (items) => {
       return `<table cellpadding="0" cellspacing="0" border="0" style="border:0;border-collapse:collapse;table-layout:auto;margin:8px 0 12px 0;">
         <tbody>
           ${hasTopNote ? `<tr>${cells((block) => `<span style="font-size:9pt;font-weight:600;white-space:nowrap;">${noWrap(block.topNote)}</span>`, "height:26px;")}</tr>` : ""}
-          ${hasTopArrow ? `<tr>${cells((block) => block.showTopArrow ? '<span style="font-size:9pt;color:#64748b;">↑</span>' : "", "height:14px;padding-top:0;padding-bottom:0;")}</tr>` : ""}
+          ${hasTopArrow ? `<tr>${cells((block) => block.showTopArrow ? '<span style="font-size:9pt;color:#000000;">↑</span>' : "", "height:14px;padding-top:0;padding-bottom:0;")}</tr>` : ""}
           <tr>${cells((block) => `<span style="font-size:9pt;font-weight:600;white-space:nowrap;">${noWrap(block.thai || "0")}</span>`, "height:26px;")}</tr>
-          <tr>${cells((block) => block.thai ? '<span style="font-size:9pt;color:#d97706;">↑</span>' : "", "height:14px;padding-top:0;padding-bottom:0;")}</tr>
+          <tr>${cells((block) => block.thai ? '<span style="font-size:9pt;color:#000000;">↑</span>' : "", "height:14px;padding-top:0;padding-bottom:0;")}</tr>
           <tr>${cells((block) => `<strong style="font-size:14pt;white-space:nowrap;">${noWrap(block.hanzi)}</strong>`, "height:28px;")}</tr>
-          <tr>${cells((block) => block.pinyin ? '<span style="font-size:8pt;color:#94a3b8;">↑</span>' : "", "height:14px;padding-top:0;padding-bottom:0;")}</tr>
-          <tr>${cells((block) => `<span style="font-size:8.5pt;color:#475569;white-space:nowrap;">${noWrap(block.pinyin)}</span>`, "height:25px;")}</tr>
+          <tr>${cells((block) => block.pinyin ? '<span style="font-size:8pt;color:#000000;">↑</span>' : "", "height:14px;padding-top:0;padding-bottom:0;")}</tr>
+          <tr>${cells((block) => `<span style="font-size:8.5pt;color:#000000;white-space:nowrap;">${noWrap(block.pinyin)}</span>`, "height:25px;")}</tr>
         </tbody>
       </table>`;
     }).join("");
 
-    return `<div style="margin:0 0 30px 0;font-family:Arial,'Noto Sans Thai','Noto Sans SC',sans-serif;page-break-inside:avoid;">
+    return `<div style="margin:0 0 30px 0;font-family:Arial,'Noto Sans Thai','Noto Sans SC',sans-serif;page-break-inside:avoid;color:#000000;">
       <p style="font-size:15pt;font-weight:700;margin:0 0 8px 0;">${escapeHtml(item.sentence.index)}</p>
       ${tables}
       ${item.sentence.hanzi ? `<p style="font-size:15pt;font-weight:700;margin:3px 0;">${escapeHtml(item.sentence.hanzi)}</p>` : ""}
-      ${item.sentence.pinyin ? `<p style="font-size:12pt;margin:3px 0;color:#475569;">${escapeHtml(item.sentence.pinyin)}</p>` : ""}
+      ${item.sentence.pinyin ? `<p style="font-size:12pt;margin:3px 0;color:#000000;">${escapeHtml(item.sentence.pinyin)}</p>` : ""}
       ${item.sentence.english ? `<p style="font-size:12pt;margin:3px 0;">${escapeHtml(item.sentence.english)}</p>` : ""}
       ${item.sentence.thai ? `<p style="font-size:12pt;font-weight:600;margin:8px 0 3px 0;">${escapeHtml(item.sentence.thai)}</p>` : ""}
     </div>`;
@@ -565,7 +565,7 @@ export default function SentenceBreakdown() {
         children.push(
           new Paragraph({
             children: [
-              new TextRun({ font: "Sarabun", text: item.sentence.index || "", bold: true, size: 32 }),
+              new TextRun({ font: "Sarabun", text: item.sentence.index || "", bold: true, size: 32, color: "000000" }),
             ],
             spacing: { before: 400, after: 100 },
           })
@@ -580,16 +580,16 @@ export default function SentenceBreakdown() {
             const hasTopArrow = chunk.some(b => b.showTopArrow);
 
             if (hasTopNote) {
-              rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.topNote || "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
+              rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.topNote || "", size: 24, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
             }
             if (hasTopArrow) {
-              rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.showTopArrow ? "↑" : "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
+              rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.showTopArrow ? "↑" : "", size: 24, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
             }
-            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.thai || "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
-            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.thai ? "↑" : "", size: 24, color: "94A3B8" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.CENTER })) }));
-            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.hanzi || "", size: 36, bold: true })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.CENTER })) }));
-            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.pinyin ? "↑" : "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.TOP })) }));
-            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.pinyin || "", size: 24 })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.TOP })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.thai || "", size: 24, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.BOTTOM })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.thai ? "↑" : "", size: 24, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.CENTER })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.hanzi || "", size: 36, bold: true, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.CENTER })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.pinyin ? "↑" : "", size: 24, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.TOP })) }));
+            rows.push(new TableRow({ children: chunk.map(b => new TableCell({ children: [new Paragraph({ children: [new TextRun({ font: "Sarabun", text: b.pinyin || "", size: 24, color: "000000" })], alignment: AlignmentType.CENTER })], borders: noBorders, verticalAlign: VerticalAlign.TOP })) }));
 
             const table = new Table({
               rows: rows,
@@ -602,10 +602,10 @@ export default function SentenceBreakdown() {
           }
         }
 
-        if (item.sentence.hanzi) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.hanzi, size: 28 })], spacing: { before: 200 } }));
-        if (item.sentence.pinyin) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.pinyin, size: 28 })] }));
-        if (item.sentence.english) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.english, size: 28 })] }));
-        if (item.sentence.thai) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.thai, size: 28 })], spacing: { before: 100 } }));
+        if (item.sentence.hanzi) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.hanzi, size: 28, color: "000000" })], spacing: { before: 200 } }));
+        if (item.sentence.pinyin) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.pinyin, size: 28, color: "000000" })] }));
+        if (item.sentence.english) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.english, size: 28, color: "000000" })] }));
+        if (item.sentence.thai) children.push(new Paragraph({ children: [new TextRun({ font: "Sarabun", text: item.sentence.thai, size: 28, color: "000000" })], spacing: { before: 100 } }));
         
         children.push(new Paragraph({ text: "" }));
       });
@@ -856,11 +856,11 @@ export default function SentenceBreakdown() {
             <div 
               ref={previewRef} 
               className="bg-white rounded-lg shadow-sm mx-auto p-8 sm:p-12 w-full flex flex-col gap-16"
-              style={{ minHeight: '500px', color: '#1e293b', fontFamily: 'var(--font-sarabun), var(--font-noto-sans-sc), sans-serif' }}
+              style={{ minHeight: '500px', color: '#000000', fontFamily: 'var(--font-sarabun), var(--font-noto-sans-sc), sans-serif' }}
             >
               {items.map((item) => (
                 <div key={item.id} className="flex gap-4 sm:gap-6">
-                  <div className="text-2xl font-bold pt-14 whitespace-nowrap min-w-[2rem] text-slate-800">
+                  <div className="text-2xl font-bold pt-14 whitespace-nowrap min-w-[2rem] text-black">
                     {item.sentence.index}
                   </div>
                   
@@ -870,26 +870,26 @@ export default function SentenceBreakdown() {
                       <div className="flex flex-wrap gap-x-6 gap-y-8">
                         {item.blocks.map((block) => (
                           <div key={block.id} className="flex flex-col items-center justify-end min-w-[3rem]">
-                            <div className="h-14 flex flex-col items-center justify-end mb-1 text-slate-600">
-                              {block.topNote && <span className="text-lg font-medium">{block.topNote}</span>}
-                              {block.showTopArrow && <span className="text-xl mt-1 text-slate-400">↑</span>}
+                            <div className="h-14 flex flex-col items-center justify-end mb-1 text-black">
+                              {block.topNote && <span className="text-lg font-medium text-black">{block.topNote}</span>}
+                              {block.showTopArrow && <span className="text-xl mt-1 text-black">↑</span>}
                             </div>
-                            <div className="text-xl h-8 flex items-center font-medium text-slate-700">{block.thai}</div>
-                            {block.thai && <div className="text-lg leading-none text-amber-500" aria-hidden="true">↑</div>}
-                            <div className="text-3xl font-bold mt-1 mb-1 text-slate-900">{block.hanzi}</div>
-                            {block.pinyin && <div className="text-lg text-slate-400">↑</div>}
-                            <div className="text-xl font-medium text-slate-600">{block.pinyin}</div>
+                            <div className="text-xl h-8 flex items-center font-medium text-black">{block.thai}</div>
+                            {block.thai && <div className="text-lg leading-none text-black" aria-hidden="true">↑</div>}
+                            <div className="text-3xl font-bold mt-1 mb-1 text-black">{block.hanzi}</div>
+                            {block.pinyin && <div className="text-lg text-black">↑</div>}
+                            <div className="text-xl font-medium text-black">{block.pinyin}</div>
                           </div>
                         ))}
                       </div>
                     )}
 
                     {/* Sentence Translation Section */}
-                    <div className="flex flex-col gap-1.5 mt-2 text-xl text-slate-700 leading-relaxed">
-                      {item.sentence.hanzi && <div className="font-semibold text-slate-900">{item.sentence.hanzi}</div>}
-                      {item.sentence.pinyin && <div>{item.sentence.pinyin}</div>}
-                      {item.sentence.english && <div>{item.sentence.english}</div>}
-                      {item.sentence.thai && <div className="mt-3 font-medium">{item.sentence.thai}</div>}
+                    <div className="flex flex-col gap-1.5 mt-2 text-xl text-black leading-relaxed">
+                      {item.sentence.hanzi && <div className="font-semibold text-black">{item.sentence.hanzi}</div>}
+                      {item.sentence.pinyin && <div className="text-black">{item.sentence.pinyin}</div>}
+                      {item.sentence.english && <div className="text-black">{item.sentence.english}</div>}
+                      {item.sentence.thai && <div className="mt-3 font-medium text-black">{item.sentence.thai}</div>}
                     </div>
                   </div>
                 </div>
